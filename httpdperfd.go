@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha1"
 	"fmt"
 	"io"
@@ -17,14 +16,13 @@ import (
 	Output: difficulty int
 */
 func set_difficulty(weight []string) int {
+  difficulty := 1000 // default
 	if len(weight) < 1 {
-		difficulty := 1000
 		return difficulty
 	}
 	difficulty, err := strconv.Atoi(weight[0])
 	if err != nil {
-		difficulty := 1000
-		return difficulty
+		difficulty = 1000
 	}
 	return difficulty
 }
@@ -40,53 +38,42 @@ func process_checksums(iterations int) time.Duration {
 	return elapsed
 }
 
-// generate blob of <size> bytes
-func generate_body(rbb []string) bytes.Buffer {
-	var buffer bytes.Buffer
+// Write zeroes to SOMETHING
+func write_body(rbb []string, w http.ResponseWriter) {
 	if len(rbb) < 1 {
-		return buffer
+		return
 	}
 	rbb_size, err := strconv.Atoi(rbb[0])
 	if err != nil {
-		return buffer // empty buffer
+		return
 	}
 	for i := 0; i < rbb_size; i++ {
-		buffer.WriteString("1")
+		io.WriteString(w, "0")
 	}
-	return buffer
 }
 
 // handle all http calls
 func slash(w http.ResponseWriter, r *http.Request) {
 	weight, _ := r.URL.Query()["weight"]
 	rbb, _ := r.URL.Query()["response_body_bytes"]
-	var buffer bytes.Buffer
-
-	response_body_bytes := generate_body(rbb)
-
 	difficulty := set_difficulty(weight)
+
 	elapsed := process_checksums(difficulty)
+  write_body(rbb, w)
 
 	msg := fmt.Sprintf("%s%s, difficulty: %d, elapsed: %v\n", r.Host, r.URL.Path, difficulty, elapsed)
-	buffer.WriteString(msg)
-	buffer.WriteString(response_body_bytes.String())
+	io.WriteString(w, msg)
 
-	response_body := buffer.String()
-
-	io.WriteString(w, response_body)
-
-	if len(os.Getenv("LOG")) < 1 {
-		return
+	if len(os.Getenv("LOG")) > 1 {
+	  fmt.Printf(msg)
 	}
-
-	fmt.Printf(msg)
-	return
 }
 
 // main
 func main() {
+  fmt.Println("Starting httpdperfd server")
 	if len(os.Getenv("LOG")) > 0 {
-		fmt.Println("Starting server with Logging enabled")
+		fmt.Printf("Logging enabled, LOG=%s\n", os.Getenv("LOG"))
 	}
 	http.HandleFunc("/", slash)
 	http.ListenAndServe(":8000", nil)
